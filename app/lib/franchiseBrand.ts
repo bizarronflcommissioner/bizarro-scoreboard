@@ -1,45 +1,43 @@
-// app/lib/franchiseBrand.ts
-// Bizarro League branding: names from MFL + per-franchise logo & color.
-// Put 32 PNGs in /public/assets/logos/bizarro/{FRANCHISE_ID}.png
-// Example: /public/assets/logos/bizarro/0001.png
-
 export type FranchiseBrand = {
-  name: string;       // Display name
-  logo: string;       // /public path to image
-  color?: string;     // Accent (win bar, badges). Optional
+  id: string;
+  name: string;
+  logo: string;
+  color?: string;
 };
 
+const defaultColor = '#334155';
+
 export const FRANCHISE_BRAND: Record<string, FranchiseBrand> = {
-  "0001": { name: "Cardinals",      logo: "/assets/logos/bizarro/0001.png", color: "#97233F" },
-  "0002": { name: "Falcons",        logo: "/assets/logos/bizarro/0002.png", color: "#A71930" },
-  "0003": { name: "Ravens",         logo: "/assets/logos/bizarro/0003.png", color: "#241773" },
-  "0004": { name: "Bills",          logo: "/assets/logos/bizarro/0004.png", color: "#00338D" },
-  "0005": { name: "Panthers",       logo: "/assets/logos/bizarro/0005.png", color: "#0085CA" },
-  "0006": { name: "Bears",          logo: "/assets/logos/bizarro/0006.png", color: "#0B162A" },
-  "0007": { name: "Bengals",        logo: "/assets/logos/bizarro/0007.png", color: "#FB4F14" },
-  "0008": { name: "Browns",         logo: "/assets/logos/bizarro/0008.png", color: "#311D00" },
-  "0009": { name: "Cowboys",        logo: "/assets/logos/bizarro/0009.png", color: "#041E42" },
-  "0010": { name: "Broncos",        logo: "/assets/logos/bizarro/0010.png", color: "#FB4F14" },
-  "0011": { name: "Lions",          logo: "/assets/logos/bizarro/0011.png", color: "#0076B6" },
-  "0012": { name: "Packers",        logo: "/assets/logos/bizarro/0012.png", color: "#203731" },
-  "0013": { name: "Texans",         logo: "/assets/logos/bizarro/0013.png", color: "#03202F" },
-  "0014": { name: "Colts",          logo: "/assets/logos/bizarro/0014.png", color: "#002C5F" },
-  "0015": { name: "Jaguars",        logo: "/assets/logos/bizarro/0015.png", color: "#006778" },
-  "0016": { name: "Chargers",       logo: "/assets/logos/bizarro/0016.png", color: "#0080C6" },
-  "0017": { name: "Chiefs",         logo: "/assets/logos/bizarro/0017.png", color: "#E31837" },
-  "0018": { name: "Rams",           logo: "/assets/logos/bizarro/0018.png", color: "#003594" },
-  "0019": { name: "Dolphins",       logo: "/assets/logos/bizarro/0019.png", color: "#008E97" },
-  "0020": { name: "Vikings",        logo: "/assets/logos/bizarro/0020.png", color: "#4F2683" },
-  "0021": { name: "Patriots",       logo: "/assets/logos/bizarro/0021.png", color: "#002244" },
-  "0022": { name: "Saints",         logo: "/assets/logos/bizarro/0022.png", color: "#D3BC8D" },
-  "0023": { name: "Giants",         logo: "/assets/logos/bizarro/0023.png", color: "#0B2265" },
-  "0024": { name: "Jets",           logo: "/assets/logos/bizarro/0024.png", color: "#125740" },
-  "0025": { name: "Raiders",        logo: "/assets/logos/bizarro/0025.png", color: "#000000" },
-  "0026": { name: "Eagles",         logo: "/assets/logos/bizarro/0026.png", color: "#004C54" },
-  "0027": { name: "Steelers",       logo: "/assets/logos/bizarro/0027.png", color: "#FFB612" },
-  "0028": { name: "49ers",          logo: "/assets/logos/bizarro/0028.png", color: "#AA0000" },
-  "0029": { name: "Seahawks",       logo: "/assets/logos/bizarro/0029.png", color: "#002244" },
-  "0030": { name: "Buccaneers",     logo: "/assets/logos/bizarro/0030.png", color: "#D50A0A" },
-  "0031": { name: "Titans",         logo: "/assets/logos/bizarro/0031.png", color: "#0C2340" },
-  "0032": { name: "Commanders",     logo: "/assets/logos/bizarro/0032.png", color: "#5A1414" },
+  '0001': { id: '0001', name: 'Cardinals', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0001.jpg', color: defaultColor },
+  '0002': { id: '0002', name: 'Falcons', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0002.jpg', color: defaultColor },
+  '0003': { id: '0003', name: 'Ravens', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0003.jpg', color: defaultColor },
+  '0004': { id: '0004', name: 'Bills', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0004.jpg', color: defaultColor },
+  '0005': { id: '0005', name: 'Panthers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0005.jpg', color: defaultColor },
+  '0006': { id: '0006', name: 'Bears', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2022/61663_franchise_icon0006.jpg', color: defaultColor },
+  '0007': { id: '0007', name: 'Bengals', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0007.jpg', color: defaultColor },
+  '0008': { id: '0008', name: 'Browns', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2022/61663_franchise_icon0008.jpg', color: defaultColor },
+  '0009': { id: '0009', name: 'Cowboys', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0009.jpg', color: defaultColor },
+  '0010': { id: '0010', name: 'Broncos', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0010.jpg', color: defaultColor },
+  '0011': { id: '0011', name: 'Lions', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0011.jpg', color: defaultColor },
+  '0012': { id: '0012', name: 'Packers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0012.jpg', color: defaultColor },
+  '0013': { id: '0013', name: 'Texans', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0013.jpg', color: defaultColor },
+  '0014': { id: '0014', name: 'Colts', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0014.jpg', color: defaultColor },
+  '0015': { id: '0015', name: 'Jaguars', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0015.jpg', color: defaultColor },
+  '0016': { id: '0016', name: 'Chargers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2022/61663_franchise_icon0016.jpg', color: defaultColor },
+  '0017': { id: '0017', name: 'Chiefs', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0017.jpg', color: defaultColor },
+  '0018': { id: '0018', name: 'Rams', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0018.jpg', color: defaultColor },
+  '0019': { id: '0019', name: 'Dolphins', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0019.jpg', color: defaultColor },
+  '0020': { id: '0020', name: 'Vikings', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0020.jpg', color: defaultColor },
+  '0021': { id: '0021', name: 'Patriots', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0021.jpg', color: defaultColor },
+  '0022': { id: '0022', name: 'Saints', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0022.jpg', color: defaultColor },
+  '0023': { id: '0023', name: 'Giants', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0023.jpg', color: defaultColor },
+  '0024': { id: '0024', name: 'Jets', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2022/61663_franchise_icon0024.jpg', color: defaultColor },
+  '0025': { id: '0025', name: 'Raiders', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0025.jpg', color: defaultColor },
+  '0026': { id: '0026', name: 'Eagles', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0026.jpg', color: defaultColor },
+  '0027': { id: '0027', name: 'Steelers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0027.jpg', color: defaultColor },
+  '0028': { id: '0028', name: '49ers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0028.jpg', color: defaultColor },
+  '0029': { id: '0029', name: 'Seahawks', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2024/61663_franchise_icon0029.jpg', color: defaultColor },
+  '0030': { id: '0030', name: 'Buccaneers', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2020/61663_franchise_icon0030.jpg', color: defaultColor },
+  '0031': { id: '0031', name: 'Titans', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2022/61663_franchise_icon0031.jpg', color: defaultColor },
+  '0032': { id: '0032', name: 'Commanders', logo: 'https://www43.myfantasyleague.com/fflnetdynamic2023/61663_franchise_icon0032.jpg', color: defaultColor },
 };
