@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Loader2, RefreshCw, Gauge, Zap, Trophy, Flame, Activity } from 'lucide-react';
+import { FRANCHISE_BRAND } from '@/app/lib/franchiseBrand';
 
 type Franchise = { id: string; name: string };
 type LiveFranchise = { id: string; score?: string };
@@ -10,8 +11,7 @@ type LiveMatchup = { franchise: LiveFranchise[] };
 type CardSide = { id: string; name: string; score: number; color?: string; logo?: string };
 type Card = { id: string; a: CardSide; b: CardSide; tag?: 'Game of the Week' | 'Closest Matchup' | 'Blowout Risk'; clock: string };
 
-// Optional branding map — we’ll fill this later
-const FRANCHISE_BRAND: Record<string, { logo?: string; color?: string }> = {};
+const DEFAULT_LOGO = '/assets/logos/bizarro/default.png';
 
 function TagBadge({ tag }: { tag?: string }) {
   if (!tag) return null;
@@ -34,11 +34,11 @@ function Bar({ leftPct = 50, color = '#334155' }: { leftPct?: number; color?: st
 function ScoreRow({ side }: { side: CardSide }) {
   return (
     <div className="flex items-center gap-3">
-      {side.logo ? (
-        <img src={side.logo} alt="" className="h-9 w-9 rounded-full ring-2 ring-slate-200" />
-      ) : (
-        <div className="h-9 w-9 rounded-full ring-2 ring-slate-200 bg-slate-100" />
-      )}
+      <img
+        src={side.logo || DEFAULT_LOGO}
+        alt=""
+        className="h-9 w-9 rounded-full ring-2 ring-slate-200 object-contain bg-white"
+      />
       <div>
         <div className="text-sm font-medium leading-tight">{side.name}</div>
         <div className="text-2xl font-semibold tracking-tight">{side.score.toFixed(1)}</div>
@@ -55,59 +55,65 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Get league franchises
+      // 1) League franchises (fallback names)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const fmap: Record<string, string> = {};
       (leagueRes?.league?.franchises?.franchise ?? []).forEach((f: Franchise) => {
         fmap[f.id] = f.name;
       });
 
-      // Get live scoring
+      // 2) Live scoring -> fallback to scoreboard
       const liveRes = await fetch(`/api/mfl?type=liveScoring&w=${week}`, { cache: 'no-store' }).then(r => r.json());
       let matchups: LiveMatchup[] = liveRes?.liveScoring?.matchup ?? [];
-
-      // Fallback to scoreboard if needed
       if (!matchups.length) {
         const sb = await fetch(`/api/mfl?type=scoreboard&w=${week}`, { cache: 'no-store' }).then(r => r.json());
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // Normalize into cards
+      // 3) Normalize
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
-        const aBrand = FRANCHISE_BRAND[a.id] ?? {};
-        const bBrand = FRANCHISE_BRAND[b.id] ?? {};
+        const aBrand = FRANCHISE_BRAND[a.id];
+        const bBrand = FRANCHISE_BRAND[b.id];
         const aScore = Number(a.score ?? 0);
         const bScore = Number(b.score ?? 0);
+
         return {
           id: String(idx),
-          a: { id: a.id, name: fmap[a.id] ?? a.id, score: aScore, color: aBrand.color, logo: aBrand.logo },
-          b: { id: b.id, name: fmap[b.id] ?? b.id, score: bScore, color: bBrand.color, logo: bBrand.logo },
+          a: {
+            id: a.id,
+            name: aBrand?.name ?? fmap[a.id] ?? a.id,
+            score: aScore,
+            color: aBrand?.color,
+            logo: aBrand?.logo || DEFAULT_LOGO
+          },
+          b: {
+            id: b.id,
+            name: bBrand?.name ?? fmap[b.id] ?? b.id,
+            score: bScore,
+            color: bBrand?.color,
+            logo: bBrand?.logo || DEFAULT_LOGO
+          },
           clock: 'LIVE'
         };
       });
 
-      // Add badges
+      // 4) Tags
       if (normalized.length) {
         let closestIdx = 0, closestMargin = Infinity;
-        normalized.forEach((c, i) => {
-          const margin = Math.abs(c.a.score - c.b.score);
-          if (margin < closestMargin) { closestMargin = margin; closestIdx = i; }
-        });
-        normalized[closestIdx].tag = 'Closest Matchup';
-
         let blowoutIdx = 0, blowoutMargin = -1;
+        let gotwIdx = 0, bestCombined = -1;
+
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
-          if (margin > blowoutMargin) { blowoutMargin = margin; blowoutIdx = i; }
-        });
-        if (blowoutMargin >= 30) normalized[blowoutIdx].tag = 'Blowout Risk';
-
-        let gotwIdx = 0, bestCombined = -1;
-        normalized.forEach((c, i) => {
           const combined = c.a.score + c.b.score;
+          if (margin < closestMargin) { closestMargin = margin; closestIdx = i; }
+          if (margin > blowoutMargin) { blowoutMargin = margin; blowoutIdx = i; }
           if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
         });
+
+        normalized[closestIdx].tag = 'Closest Matchup';
+        if (blowoutMargin >= 30) normalized[blowoutIdx].tag = 'Blowout Risk';
         normalized[gotwIdx].tag = 'Game of the Week';
       }
 
