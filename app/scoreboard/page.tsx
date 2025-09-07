@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Loader2, RefreshCw, Gauge, Zap, Trophy, Flame, Activity } from 'lucide-react';
-import { FRANCHISE_BRAND } from '@/app/lib/franchiseBrand';
+import { FRANCHISE_BRAND } from '../lib/franchiseBrand';
 
 type Franchise = { id: string; name: string };
 type LiveFranchise = { id: string; score?: string };
