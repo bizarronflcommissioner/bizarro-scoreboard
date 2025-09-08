@@ -28,21 +28,50 @@ type CardSide = {
   score: number;
   color?: string;
   logo?: string;
-  remainPct?: number;   // % of lineup minutes remaining
-  leftCount?: number;   // players left with time remaining
+  remainPct?: number;
+  leftCount?: number;
 };
+
+type TagType = 'Game of the Week' | 'Closest Matchup' | 'Blowout Risk';
 
 type Card = {
   id: string;
   a: CardSide;
   b: CardSide;
-  tag?: 'Game of the Week' | 'Closest Matchup' | 'Blowout Risk';
+  tag?: TagType;
   clock: string;
 };
 
+/* ---------- Tag styling helpers (card-wide highlight) ---------- */
+
+function tagClasses(tag?: TagType) {
+  switch (tag) {
+    case 'Game of the Week':
+      return {
+        cardBorder: 'border-indigo-500',
+        ring: 'ring-indigo-400',
+      };
+    case 'Closest Matchup':
+      return {
+        cardBorder: 'border-green-500',
+        ring: 'ring-green-400',
+      };
+    case 'Blowout Risk':
+      return {
+        cardBorder: 'border-red-500',
+        ring: 'ring-red-400',
+      };
+    default:
+      return {
+        cardBorder: 'border-slate-200',
+        ring: 'ring-slate-200',
+      };
+  }
+}
+
 /* ---------- UI helpers ---------- */
 
-function TagBadge({ tag }: { tag?: string }) {
+function TagBadge({ tag }: { tag?: TagType }) {
   if (!tag) return null;
   let icon = <Activity className="h-3.5 w-3.5" />;
   let color = 'bg-slate-200 text-slate-700';
@@ -80,18 +109,18 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
   );
 }
 
-/** Wide banner tile + “players left” */
-function ScoreRow({ side }: { side: CardSide }) {
+/** Team banner + name + players left (ring color matches tag highlight) */
+function ScoreRow({ side, ringClass }: { side: CardSide; ringClass: string }) {
   return (
     <div className="flex flex-col items-center w-56">
       {side.logo ? (
         <img
           src={side.logo}
           alt={`${side.name} Logo`}
-          className="h-20 w-48 rounded-md ring-2 ring-slate-200 object-contain bg-white shadow"
+          className={`h-20 w-48 rounded-md ring-2 ${ringClass} object-contain bg-white shadow`}
         />
       ) : (
-        <div className="h-20 w-48 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+        <div className={`h-20 w-48 rounded-md ring-2 ${ringClass} bg-slate-100`} />
       )}
       <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
       <div className="text-[11px] text-slate-500">Players left: {side.leftCount ?? '—'}</div>
@@ -231,10 +260,9 @@ export default function ScoreboardPage() {
         // Game of the Week (40% avg Win% proxy, 30% total, 30% closeness)
         let gotwIdx = 0, bestScore = -1;
         normalized.forEach((c, i) => {
-          // proxy win% from current scoreboard (simple)
           const aWP = c.a.score + 0.0001;
           const bWP = c.b.score + 0.0001;
-          const avgWinp = ((aWP / (aWP + bWP)) * 100 + (bWP / (aWP + bWP)) * 100) / 2; // ≈ 50 unless one side far ahead
+          const avgWinp = ((aWP / (aWP + bWP)) * 100 + (bWP / (aWP + bWP)) * 100) / 2; // ≈ 50 baseline
           const totalPts = c.a.score + c.b.score;
           const closeness = 100 - Math.min(100, Math.abs(c.a.score - c.b.score));
           const weighted =
@@ -291,45 +319,51 @@ export default function ScoreboardPage() {
       {(!loading && cards.length === 0) && (<div className="mb-4 text-slate-600">No matchups found for week {week}.</div>)}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((m) => (
-          <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
-            <div className="mb-2 flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs text-slate-500">
-                <Gauge className="h-3.5 w-3.5" />
-                <span>Week {week}</span><span>•</span><span>{m.clock}</span>
+        {cards.map((m) => {
+          const { cardBorder, ring } = tagClasses(m.tag);
+          return (
+            <div
+              key={m.id}
+              className={`rounded-2xl shadow-lg border-2 ${cardBorder} p-6 bg-white min-h-[210px]`}
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Gauge className="h-3.5 w-3.5" />
+                  <span>Week {week}</span><span>•</span><span>{m.clock}</span>
+                </div>
+                <TagBadge tag={m.tag} />
               </div>
-              <TagBadge tag={m.tag} />
-            </div>
 
-            {/* wider center column so scores don't stack */}
-            <div className="flex items-center justify-between gap-6">
-              <ScoreRow side={m.a} />
-              <div className="flex flex-col items-center justify-center flex-[1_1_260px] min-w-[220px]">
-                <div className="text-4xl font-bold text-slate-800 leading-none">{m.a.score.toFixed(1)}</div>
-                <div className="text-xs text-slate-400 my-1">vs</div>
-                <div className="text-4xl font-bold text-slate-800 leading-none">{m.b.score.toFixed(1)}</div>
+              {/* wider center column so scores don't stack */}
+              <div className="flex items-center justify-between gap-6">
+                <ScoreRow side={m.a} ringClass={ring} />
+                <div className="flex flex-col items-center justify-center flex-[1_1_260px] min-w-[220px]">
+                  <div className="text-4xl font-bold text-slate-800 leading-none">{m.a.score.toFixed(1)}</div>
+                  <div className="text-xs text-slate-400 my-1">vs</div>
+                  <div className="text-4xl font-bold text-slate-800 leading-none">{m.b.score.toFixed(1)}</div>
+                </div>
+                <ScoreRow side={m.b} ringClass={ring} />
               </div>
-              <ScoreRow side={m.b} />
-            </div>
 
-            {/* Quarter-like progress based on lineup minutes remaining */}
-            <div className="mt-4 grid grid-cols-2 gap-4">
-              <div>
-                <QuarterBar remainPct={m.a.remainPct ?? 50} />
-                <div className="mt-1 text-[11px] text-slate-600">Time left: {remainLabel(m.a.remainPct)}</div>
+              {/* Quarter-like progress based on lineup minutes remaining */}
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <QuarterBar remainPct={m.a.remainPct ?? 50} />
+                  <div className="mt-1 text-[11px] text-slate-600">Time left: {remainLabel(m.a.remainPct)}</div>
+                </div>
+                <div>
+                  <QuarterBar remainPct={m.b.remainPct ?? 50} />
+                  <div className="mt-1 text-[11px] text-slate-600 text-right">Time left: {remainLabel(m.b.remainPct)}</div>
+                </div>
               </div>
-              <div>
-                <QuarterBar remainPct={m.b.remainPct ?? 50} />
-                <div className="mt-1 text-[11px] text-slate-600 text-right">Time left: {remainLabel(m.b.remainPct)}</div>
-              </div>
-            </div>
 
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-              <div className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" /><span>Live via MFL</span></div>
-              <span>{new Date().toLocaleTimeString()}</span>
+              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                <div className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" /><span>Live via MFL</span></div>
+                <span>{new Date().toLocaleTimeString()}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <footer className="mt-8 text-center text-xs text-slate-400">Bizarro Fantasy Football League • Live Scoreboard</footer>
