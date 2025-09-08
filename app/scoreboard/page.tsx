@@ -89,10 +89,13 @@ function ScoreRow({ side }: { side: CardSide }) {
   return (
     <div className="flex items-center gap-3">
       {side.logo ? (
-        // Square banner/thumb (no circle). object-cover keeps your banner centered.
-        <img src={side.logo} alt="" className="h-10 w-10 rounded-md ring-2 ring-slate-200 object-cover bg-white" />
+        <img
+          src={side.logo}
+          alt={`${side.name} Logo`}
+          className="h-10 w-20 rounded-md ring-2 ring-slate-200 object-contain bg-white"
+        />
       ) : (
-        <div className="h-10 w-10 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+        <div className="h-10 w-20 rounded-md ring-2 ring-slate-200 bg-slate-100" />
       )}
       <div>
         <div className="text-sm font-medium leading-tight">{side.name}</div>
