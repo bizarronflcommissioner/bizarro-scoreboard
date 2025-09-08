@@ -227,7 +227,7 @@ export default function ScoreboardPage() {
           const margin = Math.abs(c.a.score - c.b.score);
           if (margin > blowoutMargin) { blowoutMargin = margin; blowoutIdx = i; }
         });
-        if (blowoutMargin >= 30) normalized[blowoutIdx].tag = 'Blowout Risk';
+        if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
         let gotwIdx = 0, bestCombined = -1;
         normalized.forEach((c, i) => {
