@@ -20,6 +20,15 @@ type LiveFranchise = {
 };
 type LiveMatchup = { franchise: LiveFranchise[] };
 
+// standings franchise can have a few different key styles; read defensively
+type StandingsFranchise = {
+  id: string;
+  // common keys we might see
+  w?: string; l?: string; t?: string;
+  wins?: string; losses?: string; ties?: string;
+  h2hw?: string; h2hl?: string; h2ht?: string;
+};
+
 type Brand = { name?: string; logo?: string; color?: string };
 type CardSide = { id: string; name: string; score: number; color?: string; logo?: string; remainPct?: number };
 type Card = {
@@ -97,7 +106,7 @@ function ScoreRow({ side }: { side: CardSide }) {
   );
 }
 
-/** Sum remaining seconds across starters (or any player with timing) to estimate % time left. */
+/** Estimate % lineup time left from player seconds. */
 function estimateRemainingPercent(franchise: LiveFranchise): number | undefined {
   const players = franchise?.players?.player ?? [];
   if (!players.length) return undefined;
@@ -126,6 +135,21 @@ function estimateRemainingPercent(franchise: LiveFranchise): number | undefined 
   return Math.max(0, Math.min(100, pctLeft));
 }
 
+/** Extract win% from a standings row, fallback to 0.5 if missing. */
+function parseWinPct(row?: StandingsFranchise): number {
+  if (!row) return 0.5;
+
+  const toNum = (v: any) => (v === undefined || v === null || v === '' ? 0 : Number(v));
+  // Try a few common key sets
+  const wins = toNum(row.w ?? row.wins ?? row.h2hw);
+  const losses = toNum(row.l ?? row.losses ?? row.h2hl);
+  const ties = toNum(row.t ?? row.ties ?? row.h2ht);
+
+  const gp = wins + losses + ties;
+  if (gp <= 0) return 0.5;
+  return (wins + 0.5 * ties) / gp;
+}
+
 export default function ScoreboardPage() {
   const [loading, setLoading] = React.useState(true);
   const [week, setWeek] = React.useState<string>('1');
@@ -134,7 +158,7 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // League info (names + possible logos)
+      // League (for names + logo guesses)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
@@ -155,6 +179,20 @@ export default function ScoreboardPage() {
         };
       }
 
+      // Standings (for win%)
+      // We try "standings" first; if your proxy names it differently, it will just fall back to 0.500
+      let winPctById: Record<string, number> = {};
+      try {
+        const standingsRes = await fetch(`/api/mfl?type=standings`, { cache: 'no-store' }).then(r => r.json());
+        const rows: StandingsFranchise[] = standingsRes?.standings?.franchise ?? standingsRes?.leagueStandings?.franchise ?? [];
+        winPctById = rows.reduce((acc: Record<string, number>, row) => {
+          acc[row.id] = parseWinPct(row);
+          return acc;
+        }, {});
+      } catch {
+        // ignore — we'll default to 0.5
+      }
+
       // Live scoring
       const liveRes = await fetch(`/api/mfl?type=liveScoring&w=${week}`, { cache: 'no-store' }).then(r => r.json());
       let matchups: LiveMatchup[] = liveRes?.liveScoring?.matchup ?? [];
@@ -163,7 +201,7 @@ export default function ScoreboardPage() {
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // Normalize
+      // Normalize -> Cards (+ minutes remaining)
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
@@ -181,9 +219,9 @@ export default function ScoreboardPage() {
         };
       });
 
-      // Badges:
-      // 1) Closest (smallest margin)
+      // ── Badges ───────────────────────────────────────────────────────────────
       if (normalized.length) {
+        // 1) Closest match (smallest margin)
         let closestIdx = 0, closestMargin = Infinity;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -199,15 +237,28 @@ export default function ScoreboardPage() {
         });
         if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
-        // 3) Game of the Week (closeness + total points)
-        let gotwIdx = 0, bestScore = -Infinity;
+        // 3) Game of the Week with weights
+        //    40% average win% (from standings)
+        //    30% total score (normalized)
+        //    30% closeness (inverse of margin)
+        const totals = normalized.map(c => c.a.score + c.b.score);
+        const maxTotal = Math.max(1, ...totals); // avoid /0
+        let gotwIdx = 0, bestWeighted = -Infinity;
+
         normalized.forEach((c, i) => {
           const total = c.a.score + c.b.score;
           const margin = Math.abs(c.a.score - c.b.score);
-          const closeness = 1 / (1 + margin);        // 0..1, higher = closer
-          const score = total * closeness;           // favor high-scoring close games
-          if (score > bestScore) { bestScore = score; gotwIdx = i; }
+          const aWP = winPctById[c.a.id] ?? 0.5;
+          const bWP = winPctById[c.b.id] ?? 0.5;
+          const avgWP = (aWP + bWP) / 2;            // 0..1
+
+          const totalNorm = total / maxTotal;       // 0..1
+          const closeness = 1 / (1 + margin);       // ~0..1, smaller margin = closer
+
+          const weighted = 0.40 * avgWP + 0.30 * totalNorm + 0.30 * closeness;
+          if (weighted > bestWeighted) { bestWeighted = weighted; gotwIdx = i; }
         });
+
         normalized[gotwIdx].tag = 'Game of the Week';
       }
 
@@ -259,7 +310,6 @@ export default function ScoreboardPage() {
           const leftColor = m.a.color || '#334155';
           const leftPct = m.a.score + m.b.score === 0 ? 50 : (m.a.score / (m.a.score + m.b.score)) * 100;
 
-          // Card highlight by tag (entire box)
           const cardRing =
             m.tag === 'Closest Matchup' ? 'ring-2 ring-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]' :
             m.tag === 'Blowout Risk'    ? 'ring-2 ring-rose-500 shadow-[0_0_0_4px_rgba(244,63,94,0.15)]' :
@@ -275,20 +325,16 @@ export default function ScoreboardPage() {
                 <TagBadge tag={m.tag} />
               </div>
 
-              {/* Top row: logo + wide center column + logo */}
               <div className="flex items-center justify-between gap-6">
                 <ScoreRow side={m.a} />
-
                 <div className="flex flex-col items-center justify-center w-36 md:w-44 lg:w-56 flex-shrink-0">
                   <div className="text-3xl font-bold text-slate-800">{m.a.score.toFixed(1)}</div>
                   <div className="text-xs text-slate-400 mb-1">vs</div>
                   <div className="text-3xl font-bold text-slate-800">{m.b.score.toFixed(1)}</div>
                 </div>
-
                 <ScoreRow side={m.b} />
               </div>
 
-              {/* Win-share bar */}
               <div className="mt-4">
                 <PercentBar pct={leftPct} color={leftColor} />
                 <div className="mt-1 flex justify-between text-xs text-slate-500">
@@ -296,7 +342,6 @@ export default function ScoreboardPage() {
                 </div>
               </div>
 
-              {/* Quarter-like progress */}
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
                   <QuarterBar remainPct={m.a.remainPct ?? 50} />
