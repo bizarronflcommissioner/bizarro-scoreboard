@@ -283,7 +283,7 @@ export default function ScoreboardPage() {
           const remainLabel = (pct?: number) => pct === undefined ? '—' : `${Math.round(pct!)}% left`;
 
           return (
-            <div key={m.id} className="rounded-2xl shadow-md border border-slate-200 p-4 bg-white">
+            <div key={m.id} className="rounded-2xl shadow-md border border-slate-200 p-5 bg-white min-h-[150px]">
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Gauge className="h-3.5 w-3.5" /><span>Week {week}</span><span>•</span><span>{m.clock}</span>
