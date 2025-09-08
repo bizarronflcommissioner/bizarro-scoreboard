@@ -10,11 +10,11 @@ type LiveFranchise = {
   players?: {
     player: Array<{
       id: string;
-      isStarter?: string;              // "true"/"false"
-      gameSecondsRemaining?: string;   // preferred if present
-      gsecondsRemaining?: string;      // common alt
-      secRemaining?: string;           // common alt
-      seconds_remaining?: string;      // common alt
+      isStarter?: string;
+      gameSecondsRemaining?: string;
+      gsecondsRemaining?: string;
+      secRemaining?: string;
+      seconds_remaining?: string;
     }>
   }
 };
@@ -49,7 +49,6 @@ function PercentBar({ pct = 50, color = '#334155' }: { pct?: number; color?: str
   );
 }
 
-/** Quarter-like progress from remaining percent (based on player minutes left). */
 function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
   const left = Math.max(0, Math.min(100, remainPct));
   const played = 100 - left;
@@ -82,24 +81,27 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
   );
 }
 
-function ScoreRow({ side }: { side: CardSide }) {
+function ScoreRow({ side, highlight }: { side: CardSide; highlight: string }) {
   return (
-    <div className="flex flex-col items-center w-36">
+    <div className="flex flex-col items-center w-40">
       {side.logo ? (
         <img
           src={side.logo}
           alt={`${side.name} Logo`}
-          className="h-20 w-48 rounded-md ring-2 ring-slate-200 object-contain object-center bg-white shadow"
+          className={`h-20 w-48 rounded-md ring-4 object-contain object-center bg-white shadow`}
+          style={{ borderColor: highlight, borderWidth: '3px', borderStyle: 'solid' }}
         />
       ) : (
-        <div className="h-20 w-48 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+        <div
+          className="h-20 w-48 rounded-md bg-slate-100"
+          style={{ borderColor: highlight, borderWidth: '3px', borderStyle: 'solid' }}
+        />
       )}
       <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
     </div>
   );
 }
 
-/** Try to sum remaining seconds across starters. Fallback smartly when data is missing. */
 function estimateRemainingPercent(franchise: LiveFranchise): number | undefined {
   const players = franchise?.players?.player ?? [];
   if (!players.length) return undefined;
@@ -121,7 +123,7 @@ function estimateRemainingPercent(franchise: LiveFranchise): number | undefined 
     return acc + (Number.isFinite(sec) ? sec : 0);
   }, 0);
 
-  const maxPerPlayer = 60 * 60; // 60 minutes
+  const maxPerPlayer = 60 * 60;
   const denom = pool.length * maxPerPlayer;
   if (denom <= 0) return undefined;
 
@@ -137,7 +139,6 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // 1) League: names + potential logo sources (icon/logo)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
@@ -158,37 +159,14 @@ export default function ScoreboardPage() {
         };
       }
 
-      // 2) Standings: build win% map for GOTW weighting
-      let winPct: Record<string, number> = {};
-      try {
-        const standingsRes = await fetch(`/api/mfl?type=standings`, { cache: 'no-store' }).then(r => r.json());
-        const sArr = standingsRes?.standings?.franchise ?? [];
-        winPct = Object.fromEntries(
-          sArr.map((f: any) => {
-            const id = String(f.id);
-            const wins   = Number(f.wins ?? f.h2hOverallWins ?? f.h2hWins ?? 0);
-            const losses = Number(f.losses ?? f.h2hOverallLosses ?? f.h2hLosses ?? 0);
-            const ties   = Number(f.ties ?? f.h2hOverallTies ?? f.h2hTies ?? 0);
-            const games  = wins + losses + ties;
-            const pct = games > 0 ? (wins + 0.5 * ties) / games : 0;
-            return [id, pct];
-          })
-        );
-      } catch {
-        winPct = {};
-      }
-
-      // 3) Live Scoring
       const liveRes = await fetch(`/api/mfl?type=liveScoring&w=${week}`, { cache: 'no-store' }).then(r => r.json());
       let matchups: LiveMatchup[] = liveRes?.liveScoring?.matchup ?? [];
 
-      // Fallback to scoreboard if needed
       if (!matchups.length) {
         const sb = await fetch(`/api/mfl?type=scoreboard&w=${week}`, { cache: 'no-store' }).then(r => r.json());
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // 4) Normalize into cards (with remaining % per side)
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
@@ -220,9 +198,7 @@ export default function ScoreboardPage() {
         };
       });
 
-      // 5) Badges
       if (normalized.length) {
-        // Closest matchup
         let closestIdx = 0, closestMargin = Infinity;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -230,7 +206,6 @@ export default function ScoreboardPage() {
         });
         normalized[closestIdx].tag = 'Closest Matchup';
 
-        // Blowout risk (≥ 10 points)
         let blowoutIdx = 0, blowoutMargin = -1;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -238,40 +213,11 @@ export default function ScoreboardPage() {
         });
         if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
-        // Game of the Week – weighted by closeness, combined points, and standings
-        const MAX_MARGIN = 20;       // margins ≥20 are “not close”
-        const MAX_COMBINED = 120;    // 120+ considered max fireworks
-        const MIN_COMBINED_FILTER = 35; // ignore snoozers below this
-
-        const W_CLOSENESS = 0.50;
-        const W_COMBINED  = 0.35;
-        const W_STANDINGS = 0.15;
-
-        let gotwIdx = 0;
-        let bestScore = -1;
-
+        let gotwIdx = 0, bestCombined = -1;
         normalized.forEach((c, i) => {
           const combined = c.a.score + c.b.score;
-          if (combined < MIN_COMBINED_FILTER) return;
-
-          const margin = Math.abs(c.a.score - c.b.score);
-          const closeness = 1 - Math.min(1, margin / MAX_MARGIN);   // 1 when tied, 0 when ≥ MAX_MARGIN
-          const highScore = Math.min(1, combined / MAX_COMBINED);   // 1 when ≥ MAX_COMBINED
-          const avgWinPct = ((winPct[c.a.id] ?? 0) + (winPct[c.b.id] ?? 0)) / 2;
-
-          const score = (W_CLOSENESS * closeness) + (W_COMBINED * highScore) + (W_STANDINGS * avgWinPct);
-          if (score > bestScore) { bestScore = score; gotwIdx = i; }
+          if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
         });
-
-        // If nothing met the filter, fall back to highest combined
-        if (bestScore < 0) {
-          let bestCombined = -1;
-          normalized.forEach((c, i) => {
-            const combined = c.a.score + c.b.score;
-            if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
-          });
-        }
-
         normalized[gotwIdx].tag = 'Game of the Week';
       }
 
@@ -324,6 +270,12 @@ export default function ScoreboardPage() {
           const leftColor = m.a.color || '#334155';
           const leftPct = m.a.score + m.b.score === 0 ? 50 : (m.a.score / (m.a.score + m.b.score)) * 100;
 
+          const highlightColor =
+            m.tag === 'Game of the Week' ? '#4F46E5'
+            : m.tag === 'Closest Matchup' ? '#16A34A'
+            : m.tag === 'Blowout Risk' ? '#DC2626'
+            : '#CBD5E1';
+
           return (
             <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
               <div className="mb-2 flex items-center justify-between">
@@ -334,13 +286,13 @@ export default function ScoreboardPage() {
               </div>
 
               <div className="flex items-center justify-between gap-4">
-                <ScoreRow side={m.a} />
+                <ScoreRow side={m.a} highlight={highlightColor} />
                 <div className="flex flex-col items-center justify-center w-24">
                   <div className="text-3xl font-bold text-slate-800">{m.a.score.toFixed(1)}</div>
                   <div className="text-xs text-slate-400 mb-1">vs</div>
                   <div className="text-3xl font-bold text-slate-800">{m.b.score.toFixed(1)}</div>
                 </div>
-                <ScoreRow side={m.b} />
+                <ScoreRow side={m.b} highlight={highlightColor} />
               </div>
 
               <div className="mt-3">
