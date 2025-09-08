@@ -10,12 +10,11 @@ type LiveFranchise = {
   players?: {
     player: Array<{
       id: string;
-      isStarter?: string;              // "true"/"false" (often present)
+      isStarter?: string;              // "true"/"false"
       gameSecondsRemaining?: string;   // preferred if present
-      // Some MFL skins use odd keys — we’ll try a few common variants:
-      gsecondsRemaining?: string;
-      secRemaining?: string;
-      seconds_remaining?: string;
+      gsecondsRemaining?: string;      // common alt
+      secRemaining?: string;           // common alt
+      seconds_remaining?: string;      // common alt
     }>
   }
 };
@@ -52,11 +51,9 @@ function PercentBar({ pct = 50, color = '#334155' }: { pct?: number; color?: str
 
 /** Quarter-like progress from remaining percent (based on player minutes left). */
 function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
-  // remainPct = % of lineup minutes remaining. Convert to quarters “left”.
   const left = Math.max(0, Math.min(100, remainPct));
   const played = 100 - left;
 
-  // Fill Q1..Q4 based on played%
   const perQ = 25;
   const fillFor = (qIndex: number) => {
     const start = perQ * qIndex;
@@ -87,25 +84,17 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
 
 function ScoreRow({ side }: { side: CardSide }) {
   return (
-    <div className="flex flex-col items-center w-64">
-      <div
-        className="h-20 w-60 rounded-md ring-2 ring-slate-200 bg-white shadow
-                   overflow-hidden flex items-center justify-center p-1"
-      >
-        {side.logo ? (
-          <img
-            src={side.logo}
-            alt={`${side.name} Logo`}
-            className="max-h-full max-w-full object-contain"  // <-- no cropping
-            loading="lazy"
-          />
-        ) : (
-          <div className="h-full w-full bg-slate-100" />
-        )}
-      </div>
-      <div className="text-sm font-medium leading-tight mt-2 text-center truncate w-full px-2">
-        {side.name}
-      </div>
+    <div className="flex flex-col items-center w-36">
+      {side.logo ? (
+        <img
+          src={side.logo}
+          alt={`${side.name} Logo`}
+          className="h-20 w-48 rounded-md ring-2 ring-slate-200 object-contain object-center bg-white shadow"
+        />
+      ) : (
+        <div className="h-20 w-48 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+      )}
+      <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
     </div>
   );
 }
@@ -115,7 +104,6 @@ function estimateRemainingPercent(franchise: LiveFranchise): number | undefined 
   const players = franchise?.players?.player ?? [];
   if (!players.length) return undefined;
 
-  // Use only starters if the flag is present; otherwise, include all players that report timing.
   const withTiming = players.filter(p => {
     const raw =
       p.gameSecondsRemaining ?? p.gsecondsRemaining ?? p.secRemaining ?? p.seconds_remaining;
@@ -131,14 +119,13 @@ function estimateRemainingPercent(franchise: LiveFranchise): number | undefined 
     const raw = p.gameSecondsRemaining ?? p.gsecondsRemaining ?? p.secRemaining ?? p.seconds_remaining;
     const sec = Number(raw);
     return acc + (Number.isFinite(sec) ? sec : 0);
-    }, 0);
+  }, 0);
 
-  const maxPerPlayer = 60 * 60; // 60 minutes * 60 seconds
+  const maxPerPlayer = 60 * 60; // 60 minutes
   const denom = pool.length * maxPerPlayer;
   if (denom <= 0) return undefined;
 
   const pctLeft = (totalRemainSec / denom) * 100;
-  // Clamp to sane bounds
   return Math.max(0, Math.min(100, pctLeft));
 }
 
@@ -150,7 +137,7 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // 1) League: for names + logo sources (icon/logo)
+      // 1) League: names + potential logo sources (icon/logo)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
@@ -171,7 +158,27 @@ export default function ScoreboardPage() {
         };
       }
 
-      // 2) Live Scoring
+      // 2) Standings: build win% map for GOTW weighting
+      let winPct: Record<string, number> = {};
+      try {
+        const standingsRes = await fetch(`/api/mfl?type=standings`, { cache: 'no-store' }).then(r => r.json());
+        const sArr = standingsRes?.standings?.franchise ?? [];
+        winPct = Object.fromEntries(
+          sArr.map((f: any) => {
+            const id = String(f.id);
+            const wins   = Number(f.wins ?? f.h2hOverallWins ?? f.h2hWins ?? 0);
+            const losses = Number(f.losses ?? f.h2hOverallLosses ?? f.h2hLosses ?? 0);
+            const ties   = Number(f.ties ?? f.h2hOverallTies ?? f.h2hTies ?? 0);
+            const games  = wins + losses + ties;
+            const pct = games > 0 ? (wins + 0.5 * ties) / games : 0;
+            return [id, pct];
+          })
+        );
+      } catch {
+        winPct = {};
+      }
+
+      // 3) Live Scoring
       const liveRes = await fetch(`/api/mfl?type=liveScoring&w=${week}`, { cache: 'no-store' }).then(r => r.json());
       let matchups: LiveMatchup[] = liveRes?.liveScoring?.matchup ?? [];
 
@@ -181,7 +188,7 @@ export default function ScoreboardPage() {
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // 3) Normalize into cards (with remaining % per side)
+      // 4) Normalize into cards (with remaining % per side)
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
@@ -199,7 +206,7 @@ export default function ScoreboardPage() {
             score: aScore,
             color: aBrand.color,
             logo: aBrand.logo,
-            remainPct: aRemain ?? 50, // neutral until data arrives
+            remainPct: aRemain ?? 50,
           },
           b: {
             id: b.id,
@@ -213,8 +220,9 @@ export default function ScoreboardPage() {
         };
       });
 
-      // 4) Badges
+      // 5) Badges
       if (normalized.length) {
+        // Closest matchup
         let closestIdx = 0, closestMargin = Infinity;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -222,6 +230,7 @@ export default function ScoreboardPage() {
         });
         normalized[closestIdx].tag = 'Closest Matchup';
 
+        // Blowout risk (≥ 10 points)
         let blowoutIdx = 0, blowoutMargin = -1;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -229,11 +238,40 @@ export default function ScoreboardPage() {
         });
         if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
-        let gotwIdx = 0, bestCombined = -1;
+        // Game of the Week – weighted by closeness, combined points, and standings
+        const MAX_MARGIN = 20;       // margins ≥20 are “not close”
+        const MAX_COMBINED = 120;    // 120+ considered max fireworks
+        const MIN_COMBINED_FILTER = 35; // ignore snoozers below this
+
+        const W_CLOSENESS = 0.50;
+        const W_COMBINED  = 0.35;
+        const W_STANDINGS = 0.15;
+
+        let gotwIdx = 0;
+        let bestScore = -1;
+
         normalized.forEach((c, i) => {
           const combined = c.a.score + c.b.score;
-          if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
+          if (combined < MIN_COMBINED_FILTER) return;
+
+          const margin = Math.abs(c.a.score - c.b.score);
+          const closeness = 1 - Math.min(1, margin / MAX_MARGIN);   // 1 when tied, 0 when ≥ MAX_MARGIN
+          const highScore = Math.min(1, combined / MAX_COMBINED);   // 1 when ≥ MAX_COMBINED
+          const avgWinPct = ((winPct[c.a.id] ?? 0) + (winPct[c.b.id] ?? 0)) / 2;
+
+          const score = (W_CLOSENESS * closeness) + (W_COMBINED * highScore) + (W_STANDINGS * avgWinPct);
+          if (score > bestScore) { bestScore = score; gotwIdx = i; }
         });
+
+        // If nothing met the filter, fall back to highest combined
+        if (bestScore < 0) {
+          let bestCombined = -1;
+          normalized.forEach((c, i) => {
+            const combined = c.a.score + c.b.score;
+            if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
+          });
+        }
+
         normalized[gotwIdx].tag = 'Game of the Week';
       }
 
@@ -251,6 +289,8 @@ export default function ScoreboardPage() {
     const t = setInterval(load, 30000);
     return () => clearInterval(t);
   }, [load]);
+
+  const remainLabel = (pct?: number) => pct === undefined ? '—' : `${Math.round(pct!)}% left`;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-6 md:px-8">
@@ -284,11 +324,8 @@ export default function ScoreboardPage() {
           const leftColor = m.a.color || '#334155';
           const leftPct = m.a.score + m.b.score === 0 ? 50 : (m.a.score / (m.a.score + m.b.score)) * 100;
 
-          // Convert remain % to a readable label
-          const remainLabel = (pct?: number) => pct === undefined ? '—' : `${Math.round(pct!)}% left`;
-
           return (
-            <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[190px]">
+            <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Gauge className="h-3.5 w-3.5" /><span>Week {week}</span><span>•</span><span>{m.clock}</span>
@@ -298,17 +335,14 @@ export default function ScoreboardPage() {
 
               <div className="flex items-center justify-between gap-4">
                 <ScoreRow side={m.a} />
-
-                <div className="flex flex-col items-center justify-center w-20">
-                <div className="text-3xl font-bold text-slate-800">{m.a.score.toFixed(1)}</div>
-                <div className="text-xs text-slate-400 mb-1">vs</div>
-                <div className="text-3xl font-bold text-slate-800">{m.b.score.toFixed(1)}</div>
+                <div className="flex flex-col items-center justify-center w-24">
+                  <div className="text-3xl font-bold text-slate-800">{m.a.score.toFixed(1)}</div>
+                  <div className="text-xs text-slate-400 mb-1">vs</div>
+                  <div className="text-3xl font-bold text-slate-800">{m.b.score.toFixed(1)}</div>
+                </div>
+                <ScoreRow side={m.b} />
               </div>
 
-              <ScoreRow side={m.b} />
-            </div>
-
-              {/* Win-share bar (based on points so far) */}
               <div className="mt-3">
                 <PercentBar pct={leftPct} color={leftColor} />
                 <div className="mt-1 flex justify-between text-xs text-slate-500">
@@ -316,7 +350,6 @@ export default function ScoreboardPage() {
                 </div>
               </div>
 
-              {/* Quarter-like progress based on lineup minutes remaining */}
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
                   <QuarterBar remainPct={m.a.remainPct ?? 50} />
