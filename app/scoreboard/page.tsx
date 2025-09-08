@@ -87,17 +87,20 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
 
 function ScoreRow({ side }: { side: CardSide }) {
   return (
-    <div className="flex flex-col items-center w-36">
+    <div className="flex flex-col items-center w-64"> {/* increased width */}
       {side.logo ? (
         <img
           src={side.logo}
           alt={`${side.name} Logo`}
-          className="h-16 w-32 rounded-md ring-2 ring-slate-200 object-contain bg-white shadow"
+          className="h-20 w-60 rounded-none ring-2 ring-slate-200 object-cover bg-white shadow" 
+          /* w-60 makes it ~60% wider, object-cover fills entire area */
         />
       ) : (
-        <div className="h-16 w-32 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+        <div className="h-20 w-60 rounded-none ring-2 ring-slate-200 bg-slate-100" />
       )}
-      <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
+      <div className="text-sm font-medium leading-tight mt-2 text-center truncate w-full px-2">
+        {side.name}
+      </div>
     </div>
   );
 }
