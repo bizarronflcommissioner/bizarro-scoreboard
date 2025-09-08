@@ -4,12 +4,32 @@ import React from 'react';
 import { Loader2, RefreshCw, Gauge, Zap, Trophy, Flame, Activity } from 'lucide-react';
 
 type Franchise = { id: string; name: string; icon?: string; logo?: string };
-type LiveFranchise = { id: string; score?: string };
+type LiveFranchise = {
+  id: string;
+  score?: string;
+  players?: {
+    player: Array<{
+      id: string;
+      isStarter?: string;              // "true"/"false" (often present)
+      gameSecondsRemaining?: string;   // preferred if present
+      // Some MFL skins use odd keys — we’ll try a few common variants:
+      gsecondsRemaining?: string;
+      secRemaining?: string;
+      seconds_remaining?: string;
+    }>
+  }
+};
 type LiveMatchup = { franchise: LiveFranchise[] };
 
 type Brand = { name?: string; logo?: string; color?: string };
-type CardSide = { id: string; name: string; score: number; color?: string; logo?: string };
-type Card = { id: string; a: CardSide; b: CardSide; tag?: 'Game of the Week' | 'Closest Matchup' | 'Blowout Risk'; clock: string };
+type CardSide = { id: string; name: string; score: number; color?: string; logo?: string; remainPct?: number };
+type Card = {
+  id: string;
+  a: CardSide;
+  b: CardSide;
+  tag?: 'Game of the Week' | 'Closest Matchup' | 'Blowout Risk';
+  clock: string;
+};
 
 function TagBadge({ tag }: { tag?: string }) {
   if (!tag) return null;
@@ -21,10 +41,46 @@ function TagBadge({ tag }: { tag?: string }) {
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1 ${color}`}>{icon}{tag}</span>;
 }
 
-function Bar({ leftPct = 50, color = '#334155' }: { leftPct?: number; color?: string }) {
+function PercentBar({ pct = 50, color = '#334155' }: { pct?: number; color?: string }) {
+  const clamped = Math.max(0, Math.min(100, pct));
   return (
     <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden">
-      <div className="h-full" style={{ width: `${Math.max(0, Math.min(100, leftPct))}%`, backgroundColor: color }} />
+      <div className="h-full" style={{ width: `${clamped}%`, backgroundColor: color }} />
+    </div>
+  );
+}
+
+/** Quarter-like progress from remaining percent (based on player minutes left). */
+function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
+  // remainPct = % of lineup minutes remaining. Convert to quarters “left”.
+  const left = Math.max(0, Math.min(100, remainPct));
+  const played = 100 - left;
+
+  // Fill Q1..Q4 based on played%
+  const perQ = 25;
+  const fillFor = (qIndex: number) => {
+    const start = perQ * qIndex;
+    const end = perQ * (qIndex + 1);
+    if (played >= end) return 100;
+    if (played <= start) return 0;
+    return ((played - start) / perQ) * 100;
+  };
+
+  return (
+    <div className="w-full">
+      <div className="grid grid-cols-4 gap-1">
+        {[0,1,2,3].map(i => {
+          const f = fillFor(i);
+          return (
+            <div key={i} className="h-2 bg-slate-200 rounded-sm overflow-hidden">
+              <div className="h-full bg-indigo-600" style={{ width: `${f}%` }} />
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+        <span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span>
+      </div>
     </div>
   );
 }
@@ -33,9 +89,10 @@ function ScoreRow({ side }: { side: CardSide }) {
   return (
     <div className="flex items-center gap-3">
       {side.logo ? (
-        <img src={side.logo} alt="" className="h-9 w-9 rounded-full ring-2 ring-slate-200" />
+        // Square banner/thumb (no circle). object-cover keeps your banner centered.
+        <img src={side.logo} alt="" className="h-10 w-10 rounded-md ring-2 ring-slate-200 object-cover bg-white" />
       ) : (
-        <div className="h-9 w-9 rounded-full ring-2 ring-slate-200 bg-slate-100" />
+        <div className="h-10 w-10 rounded-md ring-2 ring-slate-200 bg-slate-100" />
       )}
       <div>
         <div className="text-sm font-medium leading-tight">{side.name}</div>
@@ -43,6 +100,38 @@ function ScoreRow({ side }: { side: CardSide }) {
       </div>
     </div>
   );
+}
+
+/** Try to sum remaining seconds across starters. Fallback smartly when data is missing. */
+function estimateRemainingPercent(franchise: LiveFranchise): number | undefined {
+  const players = franchise?.players?.player ?? [];
+  if (!players.length) return undefined;
+
+  // Use only starters if the flag is present; otherwise, include all players that report timing.
+  const withTiming = players.filter(p => {
+    const raw =
+      p.gameSecondsRemaining ?? p.gsecondsRemaining ?? p.secRemaining ?? p.seconds_remaining;
+    return raw !== undefined && raw !== null && !Number.isNaN(Number(raw));
+  });
+
+  if (!withTiming.length) return undefined;
+
+  const starters = withTiming.filter(p => (p.isStarter ?? '').toString().toLowerCase() === 'true');
+  const pool = starters.length ? starters : withTiming;
+
+  const totalRemainSec = pool.reduce((acc, p) => {
+    const raw = p.gameSecondsRemaining ?? p.gsecondsRemaining ?? p.secRemaining ?? p.seconds_remaining;
+    const sec = Number(raw);
+    return acc + (Number.isFinite(sec) ? sec : 0);
+    }, 0);
+
+  const maxPerPlayer = 60 * 60; // 60 minutes * 60 seconds
+  const denom = pool.length * maxPerPlayer;
+  if (denom <= 0) return undefined;
+
+  const pctLeft = (totalRemainSec / denom) * 100;
+  // Clamp to sane bounds
+  return Math.max(0, Math.min(100, pctLeft));
 }
 
 export default function ScoreboardPage() {
@@ -53,27 +142,23 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // 1) League (for franchise names, icons, baseURL, league id)
+      // 1) League: for names + logo sources (icon/logo)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
       const franchises: Franchise[] = leagueRes?.league?.franchises?.franchise ?? [];
 
-      // Build dynamic brand map from API response
       const brand: Record<string, Brand> = {};
-      const fallbackYear = new Date().getFullYear().toString(); // last-resort year in path if needed
+      const fallbackYear = new Date().getFullYear().toString();
 
       for (const f of franchises) {
-        // Prefer MFL-provided icon/logo; otherwise construct a reasonable fallback
         const providedLogo = f.icon || f.logo;
         const guessedLogo = (baseURL && leagueId && f.id)
           ? `${baseURL}/fflnetdynamic${fallbackYear}/${leagueId}_franchise_icon${f.id}.jpg`
           : undefined;
-
         brand[f.id] = {
           name: (f.name || '').trim(),
           logo: providedLogo || guessedLogo,
-          // optional: give everyone a neutral accent; you can tune per team later
           color: '#334155',
         };
       }
@@ -88,18 +173,34 @@ export default function ScoreboardPage() {
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // 3) Normalize into cards
+      // 3) Normalize into cards (with remaining % per side)
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
         const bBrand = brand[b.id] || {};
         const aScore = Number(a.score ?? 0);
         const bScore = Number(b.score ?? 0);
+        const aRemain = estimateRemainingPercent(a);
+        const bRemain = estimateRemainingPercent(b);
 
         return {
           id: String(idx),
-          a: { id: a.id, name: aBrand.name || a.id, score: aScore, color: aBrand.color, logo: aBrand.logo },
-          b: { id: b.id, name: bBrand.name || b.id, score: bScore, color: bBrand.color, logo: bBrand.logo },
+          a: {
+            id: a.id,
+            name: aBrand.name || a.id,
+            score: aScore,
+            color: aBrand.color,
+            logo: aBrand.logo,
+            remainPct: aRemain ?? 50, // neutral until data arrives
+          },
+          b: {
+            id: b.id,
+            name: bBrand.name || b.id,
+            score: bScore,
+            color: bBrand.color,
+            logo: bBrand.logo,
+            remainPct: bRemain ?? 50,
+          },
           clock: 'LIVE',
         };
       });
@@ -174,6 +275,10 @@ export default function ScoreboardPage() {
         {cards.map((m) => {
           const leftColor = m.a.color || '#334155';
           const leftPct = m.a.score + m.b.score === 0 ? 50 : (m.a.score / (m.a.score + m.b.score)) * 100;
+
+          // Convert remain % to a readable label
+          const remainLabel = (pct?: number) => pct === undefined ? '—' : `${Math.round(pct!)}% left`;
+
           return (
             <div key={m.id} className="rounded-2xl shadow-md border border-slate-200 p-4 bg-white">
               <div className="mb-2 flex items-center justify-between">
@@ -182,17 +287,33 @@ export default function ScoreboardPage() {
                 </div>
                 <TagBadge tag={m.tag} />
               </div>
+
               <div className="flex items-start justify-between gap-4">
                 <ScoreRow side={m.a} />
                 <div className="text-slate-400 text-xs self-center">vs</div>
                 <ScoreRow side={m.b} />
               </div>
+
+              {/* Win-share bar (based on points so far) */}
               <div className="mt-3">
-                <Bar leftPct={leftPct} color={leftColor} />
+                <PercentBar pct={leftPct} color={leftColor} />
                 <div className="mt-1 flex justify-between text-xs text-slate-500">
                   <span>{leftPct.toFixed(0)}%</span><span>{(100 - leftPct).toFixed(0)}%</span>
                 </div>
               </div>
+
+              {/* Quarter-like progress based on lineup minutes remaining */}
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <QuarterBar remainPct={m.a.remainPct ?? 50} />
+                  <div className="mt-1 text-[11px] text-slate-600">Time left: {remainLabel(m.a.remainPct)}</div>
+                </div>
+                <div>
+                  <QuarterBar remainPct={m.b.remainPct ?? 50} />
+                  <div className="mt-1 text-[11px] text-slate-600 text-right">Time left: {remainLabel(m.b.remainPct)}</div>
+                </div>
+              </div>
+
               <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
                 <div className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" /><span>Live via MFL</span></div>
                 <span>{new Date().toLocaleTimeString()}</span>
