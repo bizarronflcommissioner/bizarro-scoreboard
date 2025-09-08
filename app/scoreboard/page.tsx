@@ -29,8 +29,7 @@ type CardSide = {
   color?: string;
   logo?: string;
   remainPct?: number;   // % of lineup minutes remaining
-  winp?: number;        // win probability for this side (0..100)
-  leftCount?: number;   // # players left with time remaining
+  leftCount?: number;   // players left with time remaining
 };
 
 type Card = {
@@ -41,7 +40,7 @@ type Card = {
   clock: string;
 };
 
-/* ---------------- UI helpers ---------------- */
+/* ---------- UI helpers ---------- */
 
 function TagBadge({ tag }: { tag?: string }) {
   if (!tag) return null;
@@ -51,22 +50,6 @@ function TagBadge({ tag }: { tag?: string }) {
   if (tag === 'Closest Matchup')   { icon = <Activity className="h-3.5 w-3.5" />; color = 'bg-green-600 text-white'; }
   if (tag === 'Blowout Risk')      { icon = <Flame className="h-3.5 w-3.5" />; color = 'bg-red-600 text-white'; }
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1 ${color}`}>{icon}{tag}</span>;
-}
-
-/** Win probability bar (left = team A, right = team B). */
-function WinProbBar({ left = 50, color = '#334155' }: { left?: number; color?: string }) {
-  const clamped = Math.max(0, Math.min(100, left));
-  return (
-    <div className="w-full">
-      <div className="h-2 w-full rounded-full bg-slate-200 overflow-hidden" title="Win Probability">
-        <div className="h-full" style={{ width: `${clamped}%`, backgroundColor: color }} />
-      </div>
-      <div className="mt-1 flex justify-between text-xs text-slate-500">
-        <span>{clamped.toFixed(0)}%</span>
-        <span>{(100 - clamped).toFixed(0)}%</span>
-      </div>
-    </div>
-  );
 }
 
 /** Quarter-like progress based on lineup minutes remaining */
@@ -90,23 +73,25 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
           </div>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-slate-500"><span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span></div>
+      <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+        <span>Q1</span><span>Q2</span><span>Q3</span><span>Q4</span>
+      </div>
     </div>
   );
 }
 
-/** Wide banner-style team tile + “players left” */
+/** Wide banner tile + “players left” */
 function ScoreRow({ side }: { side: CardSide }) {
   return (
-    <div className="flex flex-col items-center w-52">
+    <div className="flex flex-col items-center w-56">
       {side.logo ? (
         <img
           src={side.logo}
           alt={`${side.name} Logo`}
-          className="h-20 w-44 rounded-md ring-2 ring-slate-200 object-contain bg-white shadow"
+          className="h-20 w-48 rounded-md ring-2 ring-slate-200 object-contain bg-white shadow"
         />
       ) : (
-        <div className="h-20 w-44 rounded-md ring-2 ring-slate-200 bg-slate-100" />
+        <div className="h-20 w-48 rounded-md ring-2 ring-slate-200 bg-slate-100" />
       )}
       <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
       <div className="text-[11px] text-slate-500">Players left: {side.leftCount ?? '—'}</div>
@@ -114,7 +99,7 @@ function ScoreRow({ side }: { side: CardSide }) {
   );
 }
 
-/* ---------------- data helpers ---------------- */
+/* ---------- data helpers ---------- */
 
 function getTimingSeconds(p: any): number {
   const raw = p?.gameSecondsRemaining ?? p?.gsecondsRemaining ?? p?.secRemaining ?? p?.seconds_remaining;
@@ -122,11 +107,15 @@ function getTimingSeconds(p: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/** Get the pool we use for timing (prefer starters; otherwise anyone with timing) */
 function getTimingPool(franchise: LiveFranchise) {
   const players = franchise?.players?.player ?? [];
   if (!players.length) return [];
-  const withTiming = players.filter(p => getTimingSeconds(p) !== 0 || p?.gameSecondsRemaining !== undefined || p?.gsecondsRemaining !== undefined || p?.secRemaining !== undefined || p?.seconds_remaining !== undefined);
+  const withTiming = players.filter(p =>
+    p?.gameSecondsRemaining !== undefined ||
+    p?.gsecondsRemaining !== undefined ||
+    p?.secRemaining !== undefined ||
+    p?.seconds_remaining !== undefined
+  );
   if (!withTiming.length) return [];
   const starters = withTiming.filter(p => (p.isStarter ?? '').toString().toLowerCase() === 'true');
   return starters.length ? starters : withTiming;
@@ -136,48 +125,21 @@ function getTimingPool(franchise: LiveFranchise) {
 function estimateRemainingPercent(franchise: LiveFranchise): number | undefined {
   const pool = getTimingPool(franchise);
   if (!pool.length) return undefined;
-
   const totalRemainSec = pool.reduce((acc, p) => acc + Math.max(0, getTimingSeconds(p)), 0);
-  const maxPerPlayer = 60 * 60; // 60 minutes * 60 seconds
+  const maxPerPlayer = 60 * 60;
   const denom = pool.length * maxPerPlayer;
   if (denom <= 0) return undefined;
-
   const pctLeft = (totalRemainSec / denom) * 100;
   return Math.max(0, Math.min(100, pctLeft));
 }
 
-/** Count players with > 0s remaining in the timing pool */
 function countPlayersLeft(franchise: LiveFranchise): number | undefined {
   const pool = getTimingPool(franchise);
   if (!pool.length) return undefined;
   return pool.filter(p => getTimingSeconds(p) > 0).length;
 }
 
-/**
- * Heuristic projection -> win probability
- * - playedPct = 100 - remainPct
- * - projectedTotal ≈ currentScore / max(playedPct, minPlayed) * 100
- */
-function computeWinProb(aScore: number, aRemainPct: number | undefined, bScore: number, bRemainPct: number | undefined): { aWP: number; bWP: number } {
-  const aPlayed = Math.max(0, 100 - (aRemainPct ?? 50));
-  const bPlayed = Math.max(0, 100 - (bRemainPct ?? 50));
-  const minPlayed = 5; // damp early volatility
-
-  const aProjTotal = aScore * (100 / Math.max(minPlayed, aPlayed || 0.0001));
-  const bProjTotal = bScore * (100 / Math.max(minPlayed, bPlayed || 0.0001));
-
-  const aNonNeg = Math.max(aScore, aProjTotal);
-  const bNonNeg = Math.max(bScore, bProjTotal);
-
-  const denom = aNonNeg + bNonNeg;
-  if (denom <= 0) return { aWP: 50, bWP: 50 };
-
-  const aWP = (aNonNeg / denom) * 100;
-  const bWP = 100 - aWP;
-  return { aWP, bWP };
-}
-
-/* ---------------- page ---------------- */
+/* ---------- page ---------- */
 
 export default function ScoreboardPage() {
   const [loading, setLoading] = React.useState(true);
@@ -187,7 +149,7 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      // League info for logos/names
+      // League for names/logos
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
@@ -195,7 +157,6 @@ export default function ScoreboardPage() {
 
       const brand: Record<string, Brand> = {};
       const fallbackYear = new Date().getFullYear().toString();
-
       for (const f of franchises) {
         const providedLogo = f.icon || f.logo;
         const guessedLogo = (baseURL && leagueId && f.id)
@@ -216,7 +177,6 @@ export default function ScoreboardPage() {
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
-      // Normalize -> cards (with remain %, win prob, players left)
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
@@ -225,41 +185,56 @@ export default function ScoreboardPage() {
         const bScore = Number(b.score ?? 0);
         const aRemain = estimateRemainingPercent(a);
         const bRemain = estimateRemainingPercent(b);
-        const aLeft = countPlayersLeft(a);
-        const bLeft = countPlayersLeft(b);
-
-        const { aWP, bWP } = computeWinProb(aScore, aRemain, bScore, bRemain);
 
         return {
           id: String(idx),
-          a: { id: a.id, name: aBrand.name || a.id, score: aScore, color: aBrand.color, logo: aBrand.logo, remainPct: aRemain ?? 50, winp: aWP, leftCount: aLeft },
-          b: { id: b.id, name: bBrand.name || b.id, score: bScore, color: bBrand.color, logo: bBrand.logo, remainPct: bRemain ?? 50, winp: bWP, leftCount: bLeft },
+          a: {
+            id: a.id,
+            name: aBrand.name || a.id,
+            score: aScore,
+            color: aBrand.color,
+            logo: aBrand.logo,
+            remainPct: aRemain ?? 50,
+            leftCount: countPlayersLeft(a),
+          },
+          b: {
+            id: b.id,
+            name: bBrand.name || b.id,
+            score: bScore,
+            color: bBrand.color,
+            logo: bBrand.logo,
+            remainPct: bRemain ?? 50,
+            leftCount: countPlayersLeft(b),
+          },
           clock: 'LIVE',
         };
       });
 
       // Badges
       if (normalized.length) {
-        // Closest (smallest margin)
+        // Closest margin
         let closestIdx = 0, closestMargin = Infinity;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
           if (margin < closestMargin) { closestMargin = margin; closestIdx = i; }
         });
-        if (normalized[closestIdx]) normalized[closestIdx].tag = 'Closest Matchup';
+        normalized[closestIdx].tag = 'Closest Matchup';
 
-        // Blowout Risk (>= 10 pts)
+        // Blowout (>= 10)
         let blowoutIdx = 0, blowoutMargin = -1;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
           if (margin > blowoutMargin) { blowoutMargin = margin; blowoutIdx = i; }
         });
-        if (blowoutMargin >= 10 && normalized[blowoutIdx]) normalized[blowoutIdx].tag = 'Blowout Risk';
+        if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
-        // Game of the Week (40% avg win%, 30% total score, 30% closeness)
+        // Game of the Week (40% avg Win% proxy, 30% total, 30% closeness)
         let gotwIdx = 0, bestScore = -1;
         normalized.forEach((c, i) => {
-          const avgWinp = ((c.a.winp ?? 50) + (c.b.winp ?? 50)) / 2;
+          // proxy win% from current scoreboard (simple)
+          const aWP = c.a.score + 0.0001;
+          const bWP = c.b.score + 0.0001;
+          const avgWinp = ((aWP / (aWP + bWP)) * 100 + (bWP / (aWP + bWP)) * 100) / 2; // ≈ 50 unless one side far ahead
           const totalPts = c.a.score + c.b.score;
           const closeness = 100 - Math.min(100, Math.abs(c.a.score - c.b.score));
           const weighted =
@@ -268,7 +243,7 @@ export default function ScoreboardPage() {
             0.30 * closeness;
           if (weighted > bestScore) { bestScore = weighted; gotwIdx = i; }
         });
-        if (normalized[gotwIdx]) normalized[gotwIdx].tag = 'Game of the Week';
+        normalized[gotwIdx].tag = 'Game of the Week';
       }
 
       setCards(normalized);
@@ -316,12 +291,48 @@ export default function ScoreboardPage() {
       {(!loading && cards.length === 0) && (<div className="mb-4 text-slate-600">No matchups found for week {week}.</div>)}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {cards.map((m) => {
-          const leftColor = m.a.color || '#334155';
-          const leftWinp = m.a.winp ?? 50;
+        {cards.map((m) => (
+          <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <Gauge className="h-3.5 w-3.5" />
+                <span>Week {week}</span><span>•</span><span>{m.clock}</span>
+              </div>
+              <TagBadge tag={m.tag} />
+            </div>
 
-          return (
-            <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <Gauge class
+            {/* wider center column so scores don't stack */}
+            <div className="flex items-center justify-between gap-6">
+              <ScoreRow side={m.a} />
+              <div className="flex flex-col items-center justify-center flex-[1_1_260px] min-w-[220px]">
+                <div className="text-4xl font-bold text-slate-800 leading-none">{m.a.score.toFixed(1)}</div>
+                <div className="text-xs text-slate-400 my-1">vs</div>
+                <div className="text-4xl font-bold text-slate-800 leading-none">{m.b.score.toFixed(1)}</div>
+              </div>
+              <ScoreRow side={m.b} />
+            </div>
+
+            {/* Quarter-like progress based on lineup minutes remaining */}
+            <div className="mt-4 grid grid-cols-2 gap-4">
+              <div>
+                <QuarterBar remainPct={m.a.remainPct ?? 50} />
+                <div className="mt-1 text-[11px] text-slate-600">Time left: {remainLabel(m.a.remainPct)}</div>
+              </div>
+              <div>
+                <QuarterBar remainPct={m.b.remainPct ?? 50} />
+                <div className="mt-1 text-[11px] text-slate-600 text-right">Time left: {remainLabel(m.b.remainPct)}</div>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <div className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" /><span>Live via MFL</span></div>
+              <span>{new Date().toLocaleTimeString()}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <footer className="mt-8 text-center text-xs text-slate-400">Bizarro Fantasy Football League • Live Scoreboard</footer>
+    </div>
+  );
+}
