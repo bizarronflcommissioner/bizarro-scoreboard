@@ -35,8 +35,8 @@ function TagBadge({ tag }: { tag?: string }) {
   let icon = <Activity className="h-3.5 w-3.5" />;
   let color = 'bg-slate-200 text-slate-700';
   if (tag === 'Game of the Week') { icon = <Trophy className="h-3.5 w-3.5" />; color = 'bg-indigo-600 text-white'; }
-  if (tag === 'Closest Matchup')   { icon = <Activity className="h-3.5 w-3.5" />; color = 'bg-green-600 text-white'; }
-  if (tag === 'Blowout Risk')      { icon = <Flame className="h-3.5 w-3.5" />; color = 'bg-red-600 text-white'; }
+  if (tag === 'Closest Matchup')   { icon = <Activity className="h-3.5 w-3.5" />; color = 'bg-emerald-600 text-white'; }
+  if (tag === 'Blowout Risk')      { icon = <Flame className="h-3.5 w-3.5" />; color = 'bg-rose-600 text-white'; }
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium flex items-center gap-1 ${color}`}>{icon}{tag}</span>;
 }
 
@@ -52,7 +52,6 @@ function PercentBar({ pct = 50, color = '#334155' }: { pct?: number; color?: str
 function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
   const left = Math.max(0, Math.min(100, remainPct));
   const played = 100 - left;
-
   const perQ = 25;
   const fillFor = (qIndex: number) => {
     const start = perQ * qIndex;
@@ -81,27 +80,24 @@ function QuarterBar({ remainPct = 50 }: { remainPct?: number }) {
   );
 }
 
-function ScoreRow({ side, highlight }: { side: CardSide; highlight: string }) {
+function ScoreRow({ side }: { side: CardSide }) {
   return (
-    <div className="flex flex-col items-center w-40">
+    <div className="flex flex-col items-center w-44">
       {side.logo ? (
         <img
           src={side.logo}
           alt={`${side.name} Logo`}
-          className={`h-20 w-48 rounded-md ring-4 object-contain object-center bg-white shadow`}
-          style={{ borderColor: highlight, borderWidth: '3px', borderStyle: 'solid' }}
+          className="h-20 w-[220px] rounded-md border border-slate-200 object-contain object-center bg-white shadow"
         />
       ) : (
-        <div
-          className="h-20 w-48 rounded-md bg-slate-100"
-          style={{ borderColor: highlight, borderWidth: '3px', borderStyle: 'solid' }}
-        />
+        <div className="h-20 w-[220px] rounded-md border border-slate-200 bg-slate-100" />
       )}
       <div className="text-sm font-medium leading-tight mt-1 text-center">{side.name}</div>
     </div>
   );
 }
 
+/** Sum remaining seconds across starters (or any player with timing) to estimate % time left. */
 function estimateRemainingPercent(franchise: LiveFranchise): number | undefined {
   const players = franchise?.players?.player ?? [];
   if (!players.length) return undefined;
@@ -111,7 +107,6 @@ function estimateRemainingPercent(franchise: LiveFranchise): number | undefined 
       p.gameSecondsRemaining ?? p.gsecondsRemaining ?? p.secRemaining ?? p.seconds_remaining;
     return raw !== undefined && raw !== null && !Number.isNaN(Number(raw));
   });
-
   if (!withTiming.length) return undefined;
 
   const starters = withTiming.filter(p => (p.isStarter ?? '').toString().toLowerCase() === 'true');
@@ -139,18 +134,19 @@ export default function ScoreboardPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
+      // League info (names + possible logos)
       const leagueRes = await fetch(`/api/mfl?type=league`, { cache: 'no-store' }).then(r => r.json());
       const baseURL: string = leagueRes?.league?.baseURL || '';
       const leagueId: string = leagueRes?.league?.id || '';
       const franchises: Franchise[] = leagueRes?.league?.franchises?.franchise ?? [];
 
       const brand: Record<string, Brand> = {};
-      const fallbackYear = new Date().getFullYear().toString();
+      const year = new Date().getFullYear().toString();
 
       for (const f of franchises) {
         const providedLogo = f.icon || f.logo;
         const guessedLogo = (baseURL && leagueId && f.id)
-          ? `${baseURL}/fflnetdynamic${fallbackYear}/${leagueId}_franchise_icon${f.id}.jpg`
+          ? `${baseURL}/fflnetdynamic${year}/${leagueId}_franchise_icon${f.id}.jpg`
           : undefined;
         brand[f.id] = {
           name: (f.name || '').trim(),
@@ -159,14 +155,15 @@ export default function ScoreboardPage() {
         };
       }
 
+      // Live scoring
       const liveRes = await fetch(`/api/mfl?type=liveScoring&w=${week}`, { cache: 'no-store' }).then(r => r.json());
       let matchups: LiveMatchup[] = liveRes?.liveScoring?.matchup ?? [];
-
       if (!matchups.length) {
         const sb = await fetch(`/api/mfl?type=scoreboard&w=${week}`, { cache: 'no-store' }).then(r => r.json());
         matchups = sb?.scoreboard?.matchup ?? [];
       }
 
+      // Normalize
       const normalized: Card[] = (matchups || []).map((m, idx) => {
         const a = m.franchise[0], b = m.franchise[1];
         const aBrand = brand[a.id] || {};
@@ -178,26 +175,14 @@ export default function ScoreboardPage() {
 
         return {
           id: String(idx),
-          a: {
-            id: a.id,
-            name: aBrand.name || a.id,
-            score: aScore,
-            color: aBrand.color,
-            logo: aBrand.logo,
-            remainPct: aRemain ?? 50,
-          },
-          b: {
-            id: b.id,
-            name: bBrand.name || b.id,
-            score: bScore,
-            color: bBrand.color,
-            logo: bBrand.logo,
-            remainPct: bRemain ?? 50,
-          },
+          a: { id: a.id, name: aBrand.name || a.id, score: aScore, color: aBrand.color, logo: aBrand.logo, remainPct: aRemain ?? 50 },
+          b: { id: b.id, name: bBrand.name || b.id, score: bScore, color: bBrand.color, logo: bBrand.logo, remainPct: bRemain ?? 50 },
           clock: 'LIVE',
         };
       });
 
+      // Badges:
+      // 1) Closest (smallest margin)
       if (normalized.length) {
         let closestIdx = 0, closestMargin = Infinity;
         normalized.forEach((c, i) => {
@@ -206,6 +191,7 @@ export default function ScoreboardPage() {
         });
         normalized[closestIdx].tag = 'Closest Matchup';
 
+        // 2) Blowout (>= 10 points)
         let blowoutIdx = 0, blowoutMargin = -1;
         normalized.forEach((c, i) => {
           const margin = Math.abs(c.a.score - c.b.score);
@@ -213,10 +199,14 @@ export default function ScoreboardPage() {
         });
         if (blowoutMargin >= 10) normalized[blowoutIdx].tag = 'Blowout Risk';
 
-        let gotwIdx = 0, bestCombined = -1;
+        // 3) Game of the Week (closeness + total points)
+        let gotwIdx = 0, bestScore = -Infinity;
         normalized.forEach((c, i) => {
-          const combined = c.a.score + c.b.score;
-          if (combined > bestCombined) { bestCombined = combined; gotwIdx = i; }
+          const total = c.a.score + c.b.score;
+          const margin = Math.abs(c.a.score - c.b.score);
+          const closeness = 1 / (1 + margin);        // 0..1, higher = closer
+          const score = total * closeness;           // favor high-scoring close games
+          if (score > bestScore) { bestScore = score; gotwIdx = i; }
         });
         normalized[gotwIdx].tag = 'Game of the Week';
       }
@@ -262,7 +252,6 @@ export default function ScoreboardPage() {
       </header>
 
       {loading && (<div className="mb-4 flex items-center gap-2 text-slate-600"><Loader2 className="h-4 w-4 animate-spin" /> Updating…</div>)}
-
       {(!loading && cards.length === 0) && (<div className="mb-4 text-slate-600">No matchups found for week {week}.</div>)}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -270,14 +259,15 @@ export default function ScoreboardPage() {
           const leftColor = m.a.color || '#334155';
           const leftPct = m.a.score + m.b.score === 0 ? 50 : (m.a.score / (m.a.score + m.b.score)) * 100;
 
-          const highlightColor =
-            m.tag === 'Game of the Week' ? '#4F46E5'
-            : m.tag === 'Closest Matchup' ? '#16A34A'
-            : m.tag === 'Blowout Risk' ? '#DC2626'
-            : '#CBD5E1';
+          // Card highlight by tag (entire box)
+          const cardRing =
+            m.tag === 'Closest Matchup' ? 'ring-2 ring-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]' :
+            m.tag === 'Blowout Risk'    ? 'ring-2 ring-rose-500 shadow-[0_0_0_4px_rgba(244,63,94,0.15)]' :
+            m.tag === 'Game of the Week'? 'ring-2 ring-indigo-500 shadow-[0_0_0_4px_rgba(79,70,229,0.15)]' :
+                                           'border-slate-200';
 
           return (
-            <div key={m.id} className="rounded-2xl shadow-lg border border-slate-200 p-6 bg-white min-h-[210px]">
+            <div key={m.id} className={`rounded-2xl border p-6 bg-white min-h-[190px] transition-shadow shadow-lg ${cardRing}`}>
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-500">
                   <Gauge className="h-3.5 w-3.5" /><span>Week {week}</span><span>•</span><span>{m.clock}</span>
@@ -285,23 +275,28 @@ export default function ScoreboardPage() {
                 <TagBadge tag={m.tag} />
               </div>
 
-              <div className="flex items-center justify-between gap-4">
-                <ScoreRow side={m.a} highlight={highlightColor} />
-                <div className="flex flex-col items-center justify-center w-24">
+              {/* Top row: logo + wide center column + logo */}
+              <div className="flex items-center justify-between gap-6">
+                <ScoreRow side={m.a} />
+
+                <div className="flex flex-col items-center justify-center w-36 md:w-44 lg:w-56 flex-shrink-0">
                   <div className="text-3xl font-bold text-slate-800">{m.a.score.toFixed(1)}</div>
                   <div className="text-xs text-slate-400 mb-1">vs</div>
                   <div className="text-3xl font-bold text-slate-800">{m.b.score.toFixed(1)}</div>
                 </div>
-                <ScoreRow side={m.b} highlight={highlightColor} />
+
+                <ScoreRow side={m.b} />
               </div>
 
-              <div className="mt-3">
+              {/* Win-share bar */}
+              <div className="mt-4">
                 <PercentBar pct={leftPct} color={leftColor} />
                 <div className="mt-1 flex justify-between text-xs text-slate-500">
                   <span>{leftPct.toFixed(0)}%</span><span>{(100 - leftPct).toFixed(0)}%</span>
                 </div>
               </div>
 
+              {/* Quarter-like progress */}
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
                   <QuarterBar remainPct={m.a.remainPct ?? 50} />
